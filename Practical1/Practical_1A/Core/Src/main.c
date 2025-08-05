@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include <stdint.h>
 #include "stm32f0xx.h"
+#include <lcd_stm32f0.c>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,6 +46,19 @@ TIM_HandleTypeDef htim16;
 
 /* USER CODE BEGIN PV */
 // TODO: Define input variables
+#define SW0 GPIO_IDR_0
+#define SW1 GPIO_IDR_1
+#define SW2 GPIO_IDR_2
+#define SW3 GPIO_IDR_3
+
+uint32_t LastDebounceTime = 0;
+uint8_t DebounceDelay =200;
+
+volatile uint8_t display_mode=0;	//0 -> off, 1-> Mode 1, 2-> Mode 2, 3 -> Mode 3
+
+volatile uint16_t current_speed= 0;  // delay time in ms
+
+
 
 
 /* USER CODE END PV */
@@ -92,6 +106,11 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   // TODO: Start timer TIM16
+  HAL_TIM_Base_Start_IT(&htim16);
+
+  init_LCD();
+  lcd_command(CLEAR);
+  lcd_putstring("2025 PRAC 1");
 
  
 
@@ -107,11 +126,48 @@ int main(void)
     /* USER CODE BEGIN 3 */
 
     // TODO: Check pushbuttons to change timer delay
+	 // SWITCH 0 -> PRESSED
+	  if (HAL_GPIO_ReadPin(GPIOA, SW0) == 0 && (HAL_GetTick() - LastDebounceTime > DebounceDelay)) {
+	      lcd_command(CLEAR);
+	      LastDebounceTime = HAL_GetTick(); // DEBOUNCE
 
+	      if (current_speed == 500) {
+	    	  // SWITCHING FROM 0.5S TO 1S
+	          current_speed = 1000;
+	          lcd_putstring("Speed: 1s");
+	          __HAL_TIM_SET_AUTORELOAD(&htim16, 999);  // ASSUMING CORRECT 1KHZ
+	      }
+	      else {
+	    	  // SWITCHING FROM 1S TO O.5S
+	          current_speed = 500;
+	          lcd_putstring("Speed: 0.5s");
+	          __HAL_TIM_SET_AUTORELOAD(&htim16, 499);
+	      }
+	 }
+
+	  if (HAL_GPIO_ReadPin(GPIOA, SW1) == 0 && (HAL_GetTick() - LastDebounceTime > DebounceDelay)){
+	  		lcd_command(CLEAR);
+	  		lcd_putstring("MODE: 1");
+	  		display_mode = 1;
+	  	}
+
+	  if (HAL_GPIO_ReadPin(GPIOA, SW2) == 0 && (HAL_GetTick() - LastDebounceTime > DebounceDelay)){
+	  		lcd_command(CLEAR);
+	  		lcd_putstring("MODE: 2");
+	  		display_mode=2;
+	  	}
+	  if (HAL_GPIO_ReadPin(GPIOA, SW3) == 0 && (HAL_GetTick() - LastDebounceTime > DebounceDelay)){
+	  	  		lcd_command(CLEAR);
+	  	  		lcd_putstring("MODE: 3");
+	  	  		display_mode=3;
+	  	  	}
+
+
+  }
 
     
 
-  }
+
   /* USER CODE END 3 */
 }
 
@@ -320,8 +376,11 @@ void TIM16_IRQHandler(void)
 {
 	// Acknowledge interrupt
 	HAL_TIM_IRQHandler(&htim16);
+	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_5); //CHECK TIMING
 
 	// TODO: Change LED pattern
+
+
 
 
 
