@@ -51,6 +51,7 @@ int8_t patterns1[10] = {0b00000001, 0b00000010, 0b00000100, 0b00001000, 0b000100
 int8_t patterns2[10] = {0b11111110, 0b11111101, 0b11111011, 0b11110111, 0b11101111, 0b11011111, 0b10111111, 0b01111111, 0b10111111, 0b11011111};
 int8_t  mode = -1;
 bool delay1 = false;
+volatile uint16_t current_speed = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -59,6 +60,8 @@ static void MX_GPIO_Init(void);
 static void MX_TIM16_Init(void);
 /* USER CODE BEGIN PFP */
 void TIM16_IRQHandler(void);
+uint_8 slider = 0b00000001; //global
+bool sparkleOn = false;
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -131,6 +134,7 @@ int main(void)
 	  }
 	  else if (HAL_GPIO_ReadPin(Button3_GPIO_Port, Button3_Pin) == GPIO_PIN_RESET) {
 		  mode = 3;
+
 	  }
 
 
@@ -191,9 +195,9 @@ static void MX_TIM16_Init(void)
   /* USER CODE END TIM16_Init 1 */
   htim16.Instance = TIM16;
   htim16.Init.Prescaler = 8000-1;
-  if(delay1 == true){
-	  htim16.Init.Prescaler = 4000-1;
-  }
+//  if(delay1 == true){
+//	  htim16.Init.Prescaler = 4000-1;
+//  }
   htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim16.Init.Period = 1000-1;
   htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -344,10 +348,6 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void TIM16_IRQHandler(void)
 {
-    // 1) Acknowledge & clear TIM16 interrupt
-    HAL_TIM_IRQHandler(&htim16);
-
-
 
     // 3) Static state for each mode’s sequence
     static uint8_t idx1 = 0, idx2 = 0;
@@ -377,14 +377,55 @@ void TIM16_IRQHandler(void)
 
     case 3:
         // Mode 3: “sparkle” — random 8-bit pattern each interrupt
-        LL_GPIO_WriteOutputPort(LED0_GPIO_Port, (uint8_t)(rand() & 0xFF));
-        break;
+		uint8_t mask = (uint8_t)(rand() & 0xFF);
+		time_off = rand() % 101;
+		time_on = (uint16_t)(rand()) % 1500;
+		if(time_on < 100){
+			time_on = 1500-time_on;
+		}
+
+		uint_8 slider = 0b11111111; //global
+		LL_GPIO_WriteOutputPort(LED0_GPIO_Port, 0);
+		HAL_Delay(current_speed);
+		LL_GPIO_WriteOutputPort(LED0_GPIO_Port, mask);
+		HAL_Delay(time_on);
+		//Reset ARR
+		// Output blank , break case 3
+//			marker++;
+
+//    	 if (marker == 8){
+//    		uint_8 marker = 0;
+//    		sparkleOn = false;
+//    	}
+//
+			//ALSO SET ARRR in main
+
+        // Looking for next on led
+//    		__HAL_TIM_SETAUTORELOUD(&htim16, current_speed);
+		while(slider > 0){
+			while(!(~slider<<1 & mask)){
+				slider <<= 1;
+				pass; // breaks if on led found
+			}
+
+			mask &= slider;  // Turning off rightmost led
+			LL_GPIO_WriteOutputPort(LED0_GPIO_Port, mask);
+			HAL_Delay(time_off);
+
+			// need to wait rand(100)
+
+			//Interupt loop
+		}
+
 
     default:
         // No mode selected → turn all LEDs off
         LL_GPIO_WriteOutputPort(LED0_GPIO_Port, 0);
         break;
     }
+
+    // 1) Acknowledge & clear TIM16 interrupt
+    HAL_TIM_IRQHandler(&htim16);
 }
 
 
