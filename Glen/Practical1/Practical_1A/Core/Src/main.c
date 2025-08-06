@@ -24,6 +24,8 @@
 #include <stdint.h>
 #include "stm32f0xx.h"
 #include <lcd_stm32f0.c>
+#include <stdlib.h>  // for rand()
+#include <stdbool.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -55,8 +57,12 @@ uint32_t LastDebounceTime = 0;
 uint8_t DebounceDelay =200;
 
 volatile uint8_t display_mode=0;	//0 -> off, 1-> Mode 1, 2-> Mode 2, 3 -> Mode 3
-
 volatile uint16_t current_speed= 0;  // delay time in ms
+
+int8_t patterns1[10] = {0b00000001, 0b00000010, 0b00000100, 0b00001000, 0b00010000, 0b00100000, 0b01000000, 0b10000000, 0b01000000, 0b00100000};
+int8_t patterns2[10] = {0b11111110, 0b11111101, 0b11111011, 0b11110111, 0b11101111, 0b11011111, 0b10111111, 0b01111111, 0b10111111, 0b11011111};
+int8_t  mode = -1;
+bool delay1 = false;
 
 
 
@@ -112,7 +118,6 @@ int main(void)
   lcd_command(CLEAR);
   lcd_putstring("2025 PRAC 1");
 
- 
 
   /* USER CODE END 2 */
 
@@ -376,10 +381,46 @@ void TIM16_IRQHandler(void)
 {
 	// Acknowledge interrupt
 	HAL_TIM_IRQHandler(&htim16);
-	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_5); //CHECK TIMING
+	//HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_5); //CHECK TIMING
 
 	// TODO: Change LED pattern
 
+	    // 3) Static state for each mode’s sequence
+	    static uint8_t idx1 = 0, idx2 = 0;
+	    static bool dir1 = true, dir2 = true;
+
+	    switch (display_mode)
+	    {
+	    case 1:
+	        // Mode 1: one LED marches 0→7 then back
+	        LL_GPIO_WriteOutputPort(LED0_GPIO_Port, patterns1[idx1]);
+	        if (dir1) {
+	            if (++idx1 == 8) dir1 = false;
+	        } else {
+	            if (--idx1 == 0) dir1 = true;
+	        }
+	        break;
+
+	    case 2:
+	        // Mode 2: inverse of Mode 1 (all LEDs on except one)
+	        LL_GPIO_WriteOutputPort(LED0_GPIO_Port, patterns2[idx2]);
+	        if (dir2) {
+	            if (++idx2 == 8) dir2 = false;
+	        } else {
+	            if (--idx2 == 0) dir2 = true;
+	        }
+	        break;
+
+	    case 3:
+	        // Mode 3: “sparkle” — random 8-bit pattern each interrupt
+	        LL_GPIO_WriteOutputPort(LED0_GPIO_Port, (uint8_t)(rand() & 0xFF));
+	        break;
+
+	    default:
+	        // No mode selected → turn all LEDs off
+	        LL_GPIO_WriteOutputPort(LED0_GPIO_Port, 0);
+	        break;
+	    }
 
 
 
