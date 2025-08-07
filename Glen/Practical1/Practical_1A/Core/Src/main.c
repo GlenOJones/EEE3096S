@@ -64,6 +64,13 @@ int8_t patterns2[10] = {0b11111110, 0b11111101, 0b11111011, 0b11110111, 0b111011
 int8_t  mode = -1;
 bool delay1 = false;
 
+volatile uint16_t rand_on = 0;
+volatile uint16_t rand_off = 0;
+volatile uint16_t rand_LED = 0;
+
+volatile uint8_t mask;
+volatile uint8_t marker;
+
 
 
 
@@ -166,6 +173,8 @@ int main(void)
 	  	  		lcd_putstring("MODE: 3");
 	  	  		display_mode=3;
 	  	  	}
+
+
 
 
   }
@@ -379,53 +388,93 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void TIM16_IRQHandler(void)
 {
-	// Acknowledge interrupt
-	HAL_TIM_IRQHandler(&htim16);
-	//HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_5); //CHECK TIMING
 
-	// TODO: Change LED pattern
+    // 3) Static state for each mode’s sequence
+    static uint8_t idx1 = 0, idx2 = 0;
+    static bool dir1 = true, dir2 = true;
 
-	    // 3) Static state for each mode’s sequence
-	    static uint8_t idx1 = 0, idx2 = 0;
-	    static bool dir1 = true, dir2 = true;
+    switch (display_mode)
+    {
+    case 1:
+        // Mode 1: one LED marches 0→7 then back
+        LL_GPIO_WriteOutputPort(LED0_GPIO_Port, patterns1[idx1]);
+        if (dir1) {
+            if (++idx1 == 8) dir1 = false;
+        } else {
+            if (--idx1 == 0) dir1 = true;
+        }
+        break;
 
-	    switch (display_mode)
-	    {
-	    case 1:
-	        // Mode 1: one LED marches 0→7 then back
-	        LL_GPIO_WriteOutputPort(LED0_GPIO_Port, patterns1[idx1]);
-	        if (dir1) {
-	            if (++idx1 == 8) dir1 = false;
-	        } else {
-	            if (--idx1 == 0) dir1 = true;
-	        }
-	        break;
+    case 2:
+        // Mode 2: inverse of Mode 1 (all LEDs on except one)
+        LL_GPIO_WriteOutputPort(LED0_GPIO_Port, patterns2[idx2]);
+        if (dir2) {
+            if (++idx2 == 8) dir2 = false;
+        } else {
+            if (--idx2 == 0) dir2 = true;
+        }
+        break;
 
-	    case 2:
-	        // Mode 2: inverse of Mode 1 (all LEDs on except one)
-	        LL_GPIO_WriteOutputPort(LED0_GPIO_Port, patterns2[idx2]);
-	        if (dir2) {
-	            if (++idx2 == 8) dir2 = false;
-	        } else {
-	            if (--idx2 == 0) dir2 = true;
-	        }
-	        break;
+    case 3:
+    	lcd_command(CLEAR);
+       // lcd_putstring("ONE");
+        // Mode 3: “sparkle” — random 8-bit pattern each interrupt
+		uint8_t mask = (uint8_t)(rand() & 0xFF);
+		uint8_t time_off = rand() % 101;
+		uint8_t time_on = (uint16_t)(rand()) % 1500;
+		if(time_on < 100){
+			time_on = 1500-time_on;
+		}
 
-	    case 3:
-	        // Mode 3: “sparkle” — random 8-bit pattern each interrupt
-	        LL_GPIO_WriteOutputPort(LED0_GPIO_Port, (uint8_t)(rand() & 0xFF));
-	        break;
+		uint8_t slider = 0b11111111; //global
+		LL_GPIO_WriteOutputPort(LED0_GPIO_Port, 0);
+		lcd_command(CLEAR);
+		lcd_putstring("2");
+		//HAL_Delay(current_speed);
+		//HAL_Delay(10);
+		lcd_command(CLEAR);
+	    lcd_putstring("3");
+		LL_GPIO_WriteOutputPort(LED0_GPIO_Port, mask);
+		HAL_Delay(time_on);
+		//Reset ARR
+		// Output blank , break case 3
+//			marker++;
 
-	    default:
-	        // No mode selected → turn all LEDs off
-	        LL_GPIO_WriteOutputPort(LED0_GPIO_Port, 0);
-	        break;
-	    }
+//    	 if (marker == 8){
+//    		uint_8 marker = 0;
+//    		sparkleOn = false;
+//    	}
+//
+			//ALSO SET ARRR in main
+
+        // Looking for next on led
+//    		__HAL_TIM_SETAUTORELOUD(&htim16, current_speed);
+
+		while(slider > 0){
+			while(!(~slider<<1 & mask)){
+				slider <<= 1;
+			}
+
+			mask &= slider;  // Turning off rightmost led
+			LL_GPIO_WriteOutputPort(LED0_GPIO_Port, mask);
+			HAL_Delay(time_off);
+
+			// need to wait rand(100)
+
+			//Interupt loop
+		}
 
 
+    default:
+        // No mode selected → turn all LEDs off
+        LL_GPIO_WriteOutputPort(LED0_GPIO_Port, 0);
+        break;
+    }
 
-
+    // 1) Acknowledge & clear TIM16 interrupt
+    HAL_TIM_IRQHandler(&htim16);
 }
+
 
 
 /* USER CODE END 4 */
