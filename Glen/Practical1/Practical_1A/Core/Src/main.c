@@ -68,8 +68,13 @@ volatile uint16_t rand_on = 0;
 volatile uint16_t rand_off = 0;
 volatile uint16_t rand_LED = 0;
 
+// Global variables for sparkle
 volatile uint8_t mask;
-volatile uint8_t marker;
+volatile uint8_t counter = 0;
+uint8_t time_off;
+uint16_t time_on;
+uint8_t slider;
+
 
 
 
@@ -172,6 +177,7 @@ int main(void)
 	  	  		lcd_command(CLEAR);
 	  	  		lcd_putstring("MODE: 3");
 	  	  		display_mode=3;
+	  	  		counter=0;
 	  	  	}
 
 
@@ -389,6 +395,7 @@ static void MX_GPIO_Init(void)
 void TIM16_IRQHandler(void)
 {
 
+
     // 3) Static state for each mode’s sequence
     static uint8_t idx1 = 0, idx2 = 0;
     static bool dir1 = true, dir2 = true;
@@ -396,6 +403,7 @@ void TIM16_IRQHandler(void)
     switch (display_mode)
     {
     case 1:
+    	__HAL_TIM_SET_AUTORELOAD(&htim16, current_speed-1);
         // Mode 1: one LED marches 0→7 then back
         LL_GPIO_WriteOutputPort(LED0_GPIO_Port, patterns1[idx1]);
         if (dir1) {
@@ -407,6 +415,7 @@ void TIM16_IRQHandler(void)
 
     case 2:
         // Mode 2: inverse of Mode 1 (all LEDs on except one)
+    	__HAL_TIM_SET_AUTORELOAD(&htim16, current_speed-1);
         LL_GPIO_WriteOutputPort(LED0_GPIO_Port, patterns2[idx2]);
         if (dir2) {
             if (++idx2 == 8) dir2 = false;
@@ -416,26 +425,84 @@ void TIM16_IRQHandler(void)
         break;
 
     case 3:
-    	lcd_command(CLEAR);
+
+
        // lcd_putstring("ONE");
         // Mode 3: “sparkle” — random 8-bit pattern each interrupt
-		uint8_t mask = (uint8_t)(rand() & 0xFF);
-		uint8_t time_off = rand() % 101;
-		uint8_t time_on = (uint16_t)(rand()) % 1500;
-		if(time_on < 100){
-			time_on = 1500-time_on;
-		}
 
-		uint8_t slider = 0b11111111; //global
-		LL_GPIO_WriteOutputPort(LED0_GPIO_Port, 0);
-		lcd_command(CLEAR);
-		lcd_putstring("2");
-		//HAL_Delay(current_speed);
-		//HAL_Delay(10);
-		lcd_command(CLEAR);
-	    lcd_putstring("3");
-		LL_GPIO_WriteOutputPort(LED0_GPIO_Port, mask);
-		HAL_Delay(time_on);
+    	if (counter == 1){
+    		// Initial display
+    		//lcd_putstring("2");
+    		LL_GPIO_WriteOutputPort(LED0_GPIO_Port, mask);
+    		__HAL_TIM_SET_AUTORELOAD(&htim16, time_off);  // Time off delay initial, should be time_off
+
+    	}
+    	if(counter > 1 && counter <= 10){
+
+    				// Normal iterations
+    				// SETT ARR TO THE RANDOM GENERATED NUMBER
+    				//lcd_putstring("3.");
+    				slider = 0b11111110;
+    				while(((( mask >> (counter-2)) & 1) == 0)  &&  counter <10){
+    					counter++;  // be wary of getting stuck in loop
+    					//lcd_putstring("E");
+    				}
+
+    				LL_GPIO_WriteOutputPort(LED0_GPIO_Port, mask & (slider << (counter-2))); // Only when on LED found, 2 indices off
+    				//LL_GPIO_WriteOutputPort(LED0_GPIO_Port, 0b11110000);
+    				__HAL_TIM_SET_AUTORELOAD(&htim16, time_off);  // Time off delay
+
+    	    	}
+
+
+
+    	if(counter == 0){
+			// If first iteration of pattern
+			// DEFINING RANDOM NUMBERS
+			mask = (uint8_t)(rand() & 0xFF); // LED output
+
+			time_off = (uint8_t)rand() % 101; // Time off in turn - off sequence
+			time_on = (uint16_t)(rand()) % 1500;
+			if(time_on < 100){
+				time_on = 1500-time_on;
+			}
+
+			slider = 0b11111110; // Reseting slider ( also an iterating value)
+			LL_GPIO_WriteOutputPort(LED0_GPIO_Port, 0);  // Setting to zero output for current ARR time
+
+			// done with first iteration (blank)
+			//lcd_command(CLEAR);
+			//lcd_putstring("1");
+
+			//mask =  0b01100111; // HARDCODED FOR DEBUGGING
+			time_off = (uint8_t)300;
+			//time_on = (uint16_t)10000;
+
+			// Displaying random vals
+			char buff1[10];
+			char buff2[10];
+			sprintf(buff1, "%u", time_on);
+			sprintf(buff2, "%u", time_off);
+			lcd_command(0xC0); // line 2
+			lcd_putstring(buff1);
+			lcd_putstring(" , ");
+			lcd_putstring(buff2);
+			lcd_command(0x80); // line 1 again
+
+
+			__HAL_TIM_SET_AUTORELOAD(&htim16, time_on); // Setting ARR for ON delay (counts next count)
+
+    	}
+
+    	counter++;
+
+    	if (counter == 10){
+    				// Resetting
+    				counter = 0;
+    				__HAL_TIM_SET_AUTORELOAD(&htim16, 500); // Setting ARR for OFF delay (counts next count)
+    			}
+
+
 		//Reset ARR
 		// Output blank , break case 3
 //			marker++;
@@ -448,8 +515,9 @@ void TIM16_IRQHandler(void)
 			//ALSO SET ARRR in main
 
         // Looking for next on led
-//    		__HAL_TIM_SETAUTORELOUD(&htim16, current_speed);
+//
 
+    	/*
 		while(slider > 0){
 			while(!(~slider<<1 & mask)){
 				slider <<= 1;
@@ -464,6 +532,9 @@ void TIM16_IRQHandler(void)
 			//Interupt loop
 		}
 
+		*/
+    	break;
+
 
     default:
         // No mode selected → turn all LEDs off
@@ -472,7 +543,8 @@ void TIM16_IRQHandler(void)
     }
 
     // 1) Acknowledge & clear TIM16 interrupt
-    HAL_TIM_IRQHandler(&htim16);
+        HAL_TIM_IRQHandler(&htim16);
+
 }
 
 
