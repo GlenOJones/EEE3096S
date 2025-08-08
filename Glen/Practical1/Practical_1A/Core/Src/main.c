@@ -443,10 +443,13 @@ void TIM16_IRQHandler(void)
     				// SETT ARR TO THE RANDOM GENERATED NUMBER
     				//lcd_putstring("3.");
     				slider = 0b11111110;
-    				while(((( mask >> (counter-2)) & 1) == 0)  &&  counter <10){
+
+
+    				while(((( mask >> (counter-2)) & 1) == 0)  &&  (counter < 10)){
     					counter++;  // be wary of getting stuck in loop
     					//lcd_putstring("E");
     				}
+
 
     				LL_GPIO_WriteOutputPort(LED0_GPIO_Port, mask & (slider << (counter-2))); // Only when on LED found, 2 indices off
     				//LL_GPIO_WriteOutputPort(LED0_GPIO_Port, 0b11110000);
@@ -461,10 +464,14 @@ void TIM16_IRQHandler(void)
 			// DEFINING RANDOM NUMBERS
 			mask = (uint8_t)(rand() & 0xFF); // LED output
 
-			time_off = (uint8_t)rand() % 101; // Time off in turn - off sequence
+			time_off = (uint16_t)rand() % 101; // Time off in turn - off sequence
+			if (time_off == 0){
+				time_off = mask % 101; // Ensuring not zero as it will crash delay
+			}
+
 			time_on = (uint16_t)(rand()) % 1500;
 			if(time_on < 100){
-				time_on = 1500-time_on;
+				time_on = (uint16_t)1500-time_on;
 			}
 
 			slider = 0b11111110; // Reseting slider ( also an iterating value)
@@ -475,19 +482,22 @@ void TIM16_IRQHandler(void)
 			//lcd_putstring("1");
 
 			//mask =  0b01100111; // HARDCODED FOR DEBUGGING
-			time_off = (uint8_t)300;
+		    //time_off = (uint16_t)3;
 			//time_on = (uint16_t)10000;
 
 			// Displaying random vals
-			char buff1[10];
-			char buff2[10];
-			sprintf(buff1, "%u", time_on);
-			sprintf(buff2, "%u", time_off);
+			char buff1[8] = {0};  // "65535" + null = 6 bytes (plus margin)
+			char buff2[8] = {0};
+			// 2. Format numbers (no manual null termination needed)
+			snprintf(buff1, sizeof(buff1), "%u", (unsigned int)time_on);
+			snprintf(buff2, sizeof(buff2), "%u", (unsigned int)time_off);
+			lcd_command(CLEAR);
 			lcd_command(0xC0); // line 2
 			lcd_putstring(buff1);
 			lcd_putstring(" , ");
 			lcd_putstring(buff2);
 			lcd_command(0x80); // line 1 again
+			lcd_putstring("MODE: 3");
 
 
 			__HAL_TIM_SET_AUTORELOAD(&htim16, time_on); // Setting ARR for ON delay (counts next count)
@@ -496,10 +506,11 @@ void TIM16_IRQHandler(void)
 
     	counter++;
 
-    	if (counter == 10){
+    	if (counter >= 10){
     				// Resetting
     				counter = 0;
-    				__HAL_TIM_SET_AUTORELOAD(&htim16, 500); // Setting ARR for OFF delay (counts next count)
+    				//lcd_putstring("R");
+    				__HAL_TIM_SET_AUTORELOAD(&htim16, 400); // Setting ARR for OFF delay (counts next count)
     			}
 
 
