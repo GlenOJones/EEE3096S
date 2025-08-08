@@ -1,3 +1,4 @@
+//////////////////
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
@@ -23,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 #include <stdint.h>
 #include "stm32f0xx.h"
+#include <lcd_stm32f0.c>
 #include <stdlib.h>  // for rand()
 #include <stdbool.h>
 /* USER CODE END Includes */
@@ -47,11 +49,29 @@ TIM_HandleTypeDef htim16;
 
 /* USER CODE BEGIN PV */
 // TODO: Define input variables
-int8_t patterns1[10] = {0b00000001, 0b00000010, 0b00000100, 0b00001000, 0b00010000, 0b00100000, 0b01000000, 0b10000000, 0b01000000, 0b00100000};
-int8_t patterns2[10] = {0b11111110, 0b11111101, 0b11111011, 0b11110111, 0b11101111, 0b11011111, 0b10111111, 0b01111111, 0b10111111, 0b11011111};
+#define SW0 GPIO_IDR_0
+#define SW1 GPIO_IDR_1
+#define SW2 GPIO_IDR_2
+#define SW3 GPIO_IDR_3
+
+uint32_t LastDebounceTime = 0;
+uint8_t DebounceDelay =200;
+
+volatile uint8_t display_mode=0;	//0 -> off, 1-> Mode 1, 2-> Mode 2, 3 -> Mode 3
+volatile uint16_t current_speed = 1000; // 1 s  // delay time in ms
+
+int8_t patterns1[10] = {0b00000001, 0b00000010, 0b00000100, 0b00001000, 0b00010000, 0b00100000, 0b01000000, 0b10000000};
+int8_t patterns2[10] = {0b11111110, 0b11111101, 0b11111011, 0b11110111, 0b11101111, 0b11011111, 0b10111111, 0b01111111};
 int8_t  mode = -1;
-bool delay1 = false;
-volatile uint16_t current_speed = 0;
+volatile uint16_t rand_on = 0;
+volatile uint16_t rand_off = 0;
+
+// Global variables for sparkle
+volatile uint8_t mask;
+volatile uint8_t counter = 0;
+uint8_t time_off;
+uint16_t time_on;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -60,8 +80,6 @@ static void MX_GPIO_Init(void);
 static void MX_TIM16_Init(void);
 /* USER CODE BEGIN PFP */
 void TIM16_IRQHandler(void);
-uint_8 slider = 0b00000001; //global
-bool sparkleOn = false;
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -107,7 +125,11 @@ int main(void)
 
   // TODO: Start timer TIM16
   HAL_TIM_Base_Start_IT(&htim16);
- 
+
+  init_LCD();
+  lcd_command(CLEAR);
+  lcd_putstring("2025 PRAC 1");
+
 
   /* USER CODE END 2 */
 
@@ -121,24 +143,49 @@ int main(void)
     /* USER CODE BEGIN 3 */
 
     // TODO: Check pushbuttons to change timer delay
-	  // Button is active-low: pressed == GPIO_PIN_RESET
-	  if(HAL_GPIO_ReadPin(Button0_GPIO_Port, Button0_Pin) == GPIO_PIN_RESET) {
-		  delay1 =  true;
-		  MX_TIM16_Init();
-	  }
-	  if (HAL_GPIO_ReadPin(Button1_GPIO_Port, Button1_Pin) == GPIO_PIN_RESET) {
-		  mode = 1;
-	  }
-	  else if (HAL_GPIO_ReadPin(Button2_GPIO_Port, Button2_Pin) == GPIO_PIN_RESET) {
-		  mode = 2;
-	  }
-	  else if (HAL_GPIO_ReadPin(Button3_GPIO_Port, Button3_Pin) == GPIO_PIN_RESET) {
-		  mode = 3;
+	 // SWITCH 0 -> PRESSED
+	  if (HAL_GPIO_ReadPin(GPIOA, SW0) == 0 && (HAL_GetTick() - LastDebounceTime > DebounceDelay)) {
+	      lcd_command(CLEAR);
+	      LastDebounceTime = HAL_GetTick(); // DEBOUNCE
 
-	  }
+	      if (current_speed == 500) {
+	    	  // SWITCHING FROM 0.5S TO 1S
+	          current_speed = 1000;
+	          lcd_putstring("Speed: 1s");
+	          // CHANGE INTERRUPT & RESET IT
+	          __HAL_TIM_SET_AUTORELOAD(&htim16, 999);  // ASSUMING CORRECT 1KHZ
+	          __HAL_TIM_SET_COUNTER(&htim16, 0);
+	      }
+	      else {
+	    	  // SWITCHING FROM 1S TO O.5S
+	          current_speed = 500;
+	          lcd_putstring("Speed: 0.5s");
+	          // CHANGE INTERRUPT & RESET IT
+	          __HAL_TIM_SET_AUTORELOAD(&htim16, 499);
+	          __HAL_TIM_SET_COUNTER(&htim16, 0);
+	      }
+	 }
 
+	  if (HAL_GPIO_ReadPin(GPIOA, SW1) == 0 && (HAL_GetTick() - LastDebounceTime > DebounceDelay)){
+	  		lcd_command(CLEAR);
+	  		lcd_putstring("MODE: 1");
+	  		display_mode = 1;
+	  	}
 
+	  if (HAL_GPIO_ReadPin(GPIOA, SW2) == 0 && (HAL_GetTick() - LastDebounceTime > DebounceDelay)){
+	  		lcd_command(CLEAR);
+	  		lcd_putstring("MODE: 2");
+	  		display_mode=2;
+	  	}
+	  if (HAL_GPIO_ReadPin(GPIOA, SW3) == 0 && (HAL_GetTick() - LastDebounceTime > DebounceDelay)){
+			lcd_command(CLEAR);
+			lcd_putstring("MODE: 3");
+			display_mode=3;
+			// PREPEARE COUNTER FOR SPARKLE
+	  	  	counter=0;
+		}
   }
+
   /* USER CODE END 3 */
 }
 
@@ -195,9 +242,6 @@ static void MX_TIM16_Init(void)
   /* USER CODE END TIM16_Init 1 */
   htim16.Instance = TIM16;
   htim16.Init.Prescaler = 8000-1;
-//  if(delay1 == true){
-//	  htim16.Init.Prescaler = 4000-1;
-//  }
   htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim16.Init.Period = 1000-1;
   htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -348,18 +392,22 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void TIM16_IRQHandler(void)
 {
-
-    // 3) Static state for each mode’s sequence
+    // INITIALIZE VARIABLES FOR PATTERNS
     static uint8_t idx1 = 0, idx2 = 0;
     static bool dir1 = true, dir2 = true;
 
-    switch (mode)
+    switch (display_mode)
     {
     case 1:
+    	//PATTERN 1
+
+    	//RESET DELAY
+
+    	__HAL_TIM_SET_AUTORELOAD(&htim16, current_speed-1);
         // Mode 1: one LED marches 0→7 then back
         LL_GPIO_WriteOutputPort(LED0_GPIO_Port, patterns1[idx1]);
         if (dir1) {
-            if (++idx1 == 8) dir1 = false;
+            if (++idx1 == 7) dir1 = false;
         } else {
             if (--idx1 == 0) dir1 = true;
         }
@@ -367,9 +415,10 @@ void TIM16_IRQHandler(void)
 
     case 2:
         // Mode 2: inverse of Mode 1 (all LEDs on except one)
+    	__HAL_TIM_SET_AUTORELOAD(&htim16, current_speed-1);
         LL_GPIO_WriteOutputPort(LED0_GPIO_Port, patterns2[idx2]);
         if (dir2) {
-            if (++idx2 == 8) dir2 = false;
+            if (++idx2 == 7) dir2 = false;
         } else {
             if (--idx2 == 0) dir2 = true;
         }
@@ -377,56 +426,68 @@ void TIM16_IRQHandler(void)
 
     case 3:
         // Mode 3: “sparkle” — random 8-bit pattern each interrupt
-		uint8_t mask = (uint8_t)(rand() & 0xFF);
-		time_off = rand() % 101;
-		time_on = (uint16_t)(rand()) % 1500;
-		if(time_on < 100){
-			time_on = 1500-time_on;
+    	if (counter == 1){
+    		// Turn on All the LEDs and let them sit for random Duration
+    		LL_GPIO_WriteOutputPort(LED0_GPIO_Port, mask);
+    		counter++;
+    		__HAL_TIM_SET_AUTORELOAD(&htim16, time_off);  // Time off delay initial, should be time_off
+    		__HAL_TIM_SET_COUNTER(&htim16, 0);
+    	}
+
+    	if(((uint8_t)mask != 0) && counter == 2){
+    		// NEAT LITTLE BIT MANIPULATION TO TURN OFF RIGHTMOST 1
+			mask &= (uint8_t)(mask - 1);
+			LL_GPIO_WriteOutputPort(LED0_GPIO_Port, mask);
+
 		}
 
-		uint_8 slider = 0b11111111; //global
-		LL_GPIO_WriteOutputPort(LED0_GPIO_Port, 0);
-		HAL_Delay(current_speed);
-		LL_GPIO_WriteOutputPort(LED0_GPIO_Port, mask);
-		HAL_Delay(time_on);
-		//Reset ARR
-		// Output blank , break case 3
-//			marker++;
-
-//    	 if (marker == 8){
-//    		uint_8 marker = 0;
-//    		sparkleOn = false;
-//    	}
-//
-			//ALSO SET ARRR in main
-
-        // Looking for next on led
-//    		__HAL_TIM_SETAUTORELOUD(&htim16, current_speed);
-		while(slider > 0){
-			while(!(~slider<<1 & mask)){
-				slider <<= 1;
-				pass; // breaks if on led found
+    	if(counter == 0){
+			// If first iteration of pattern
+			// DEFINING RANDOM NUMBERS
+			mask = (uint8_t)(rand() & 0xFF); // LED output
+			time_off = (uint8_t)rand() % 101; // Time off in turn - off sequence
+			time_on = (uint16_t)(rand()) % 1500;
+			if(time_on < 100){
+				time_on = 1500-time_on;
 			}
 
-			mask &= slider;  // Turning off rightmost led
-			LL_GPIO_WriteOutputPort(LED0_GPIO_Port, mask);
-			HAL_Delay(time_off);
+			LL_GPIO_WriteOutputPort(LED0_GPIO_Port, 0);  // Setting to zero output for current ARR time
 
-			// need to wait rand(100)
-
-			//Interupt loop
+			// Displaying generated random values
+			char buff1[10];
+			char buff2[10];
+			sprintf(buff1, "%u", time_on);
+			sprintf(buff2, "%u", time_off);
+			lcd_command(0xC0); // line 2
+			lcd_putstring(buff1);
+			lcd_putstring(" , ");
+			lcd_putstring(buff2);
+			lcd_command(0x80); // line 1 again
+			// INCREMENT COUNTER
+			counter++;
+			__HAL_TIM_SET_AUTORELOAD(&htim16, time_on); // Setting ARR for ON delay (counts next count)
+			__HAL_TIM_SET_COUNTER(&htim16, 0);
+    	}
+    	if (mask == 0){
+			// RESET ONCE ALL LEDS ARE OFF
+			counter = 0;
+			__HAL_TIM_SET_AUTORELOAD(&htim16, 500); // Setting ARR for OFF delay (counts next count)
 		}
 
+    	break;
 
-    default:
-        // No mode selected → turn all LEDs off
-        LL_GPIO_WriteOutputPort(LED0_GPIO_Port, 0);
-        break;
+
+		default:
+			// No mode selected → turn all LEDs off
+			LL_GPIO_WriteOutputPort(LED0_GPIO_Port, 0);
+			break;
     }
 
     // 1) Acknowledge & clear TIM16 interrupt
     HAL_TIM_IRQHandler(&htim16);
+
 }
+
 
 
 /* USER CODE END 4 */
