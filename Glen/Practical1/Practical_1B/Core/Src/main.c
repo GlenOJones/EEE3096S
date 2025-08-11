@@ -44,13 +44,15 @@
 
 /* USER CODE BEGIN PV */
 //TODO: Define and initialise the global varibales required
-/*
-  start_time
-  end_time
-  execution_time 
-  checksum: should be uint64_t
-  initial width and height maybe or you might opt for an array??
-*/
+
+  uint64_t start_time;
+  uint64_t end_time;
+  uint64_t execution_time;
+  uint64_t checksum;
+  uint64_t width;
+  uint64_t height;
+  //initial width and height maybe or you might opt for an array??
+
 
 /* USER CODE END PV */
 
@@ -204,8 +206,39 @@ static void MX_GPIO_Init(void)
 uint64_t calculate_mandelbrot_fixed_point_arithmetic(int width, int height, int max_iterations){
   uint64_t mandelbrot_sum = 0;
     //TODO: Complete the function implementation
-    
-    return mandelbrot_sum;
+
+  	  int64_t x0, y0, xi, yi, tmp;  // int because can be negative
+       uint16_t iterations;
+       // scaling factor 6 common for 64 bit
+       uint8_t S = 6;  // currently being multiplied by 2^6 not 10^6
+
+       for(int y = 0 ; y < height; y++){
+		 for (int x = 0; x < width; x++){
+			 x0 = (((int64_t)x << S) / width) * 35/10 - ((int64_t)25 << S) / 10;
+			 y0 = (((int64_T)y << S) / height)*20/10 -((int64_t)10/10<< S);
+
+			 // Initialise values
+			 xi = yi = iterations = 0;
+
+			 // Main calculation loop
+			 while (iterations < max_iterations &&
+			        ((xi * xi + yi * yi) >> S) <= (4 << S)) {
+
+			     tmp = ((xi * xi - yi * yi) >> S) + x0;
+			     yi  = ((2 * xi * yi) >> S) + y0;
+			     xi  = tmp;
+
+			     iterations++;
+			 }
+
+			 //Colour pixel based on iteration count
+			// result[y*width+x] = iterations; // NOT NEEDED,
+
+			 // Storing result in sum
+			mandelbrot_sum += iterations;
+						 }
+					 }
+	 return mandelbrot_sum;
 
 }
 
@@ -213,7 +246,34 @@ uint64_t calculate_mandelbrot_fixed_point_arithmetic(int width, int height, int 
 uint64_t calculate_mandelbrot_double(int width, int height, int max_iterations){
     uint64_t mandelbrot_sum = 0;
     //TODO: Complete the function implementation
-    
+     double x0, y0, xi, yi, tmp;  // int because can be negative
+     uint16_t iterations;
+
+     	 for(int y = 0 ; y < height; y++){
+     		 for (int x = 0; x < width; x++){
+     			 // Map pixel to mathematical coordinate
+     			 x0 = ((double)x / width)*3.5 - 2.5;  // type cast to avoid integer division (truncating)
+     			 y0 = ((double)y / height)*2.0 -1.0;
+
+     			 // Initialise values
+     			 xi = yi = iterations = 0;
+
+     			 // Main calculation loop
+     			 while(iterations < max_iterations && (xi*xi+yi*yi) <=4.0 ){
+     				 // Calculate next values
+     				 tmp = xi*xi-yi*yi+x0;
+     				 yi = 2*xi*yi+y0;
+     				 xi=tmp;
+     				 iterations += 1;
+     			 }
+
+     			 //Colour pixel based on iteration count
+     			// result[y*width+x] = iterations; // NOT NEEDED,
+
+     			 // Storing result in sum
+     			mandelbrot_sum += iterations;
+     		 }
+     	 }
     return mandelbrot_sum;
 }
 

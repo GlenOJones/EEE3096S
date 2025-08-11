@@ -168,6 +168,7 @@ int main(void)
 	  		display_mode = 1;
 	  	}
 
+
 	  if (HAL_GPIO_ReadPin(GPIOA, SW2) == 0 && (HAL_GetTick() - LastDebounceTime > DebounceDelay)){
 	  		lcd_command(CLEAR);
 	  		lcd_putstring("MODE: 2");
